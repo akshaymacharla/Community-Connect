@@ -1,0 +1,105 @@
+Create a single-file React.js web application for the "NeighbörNet" project. The application should be a functional prototype of a hyper-local community marketplace, following the design and features outlined in the provided project documents.
+
+Technical Stack:
+
+Frontend: React.js (single file, no multiple components).
+
+Styling: Tailwind CSS for a modern, mobile-first, and responsive design.
+
+Backend/Database: Firebase Firestore for user authentication and data storage. Use the global variables __app_id, __firebase_config, and __initial_auth_token for a seamless setup.
+
+Dependencies: All necessary Firebase imports should be from CDN links within the file.
+
+Application Structure & User Flow:
+
+Landing Page:
+
+Display the application name, "NeighbörNet", with high visibility.
+
+Include a visually dynamic element, such as a background gradient or subtle animation, that represents community.
+
+Present two main options as large, prominent buttons: "I'm a Resident" and "I'm a Community President".
+
+Clicking either button should redirect the user to the login/registration page, setting the user's role in the application's state.
+
+Login & Registration Page:
+
+The UI should be clean, modern, and user-friendly.
+
+The user must be able to log in by entering their phone number, along with their Flat Number, Floor, and Block details.
+
+Simulate the login process. On a successful "login," the user's data should be saved to a Firestore users collection.
+
+Utilize Firebase Authentication to sign in the user. If __initial_auth_token is available, use signInWithCustomToken(). Otherwise, fall back to signInAnonymously().
+
+The user ID (uid) from authentication should be stored to reference their data in Firestore.
+
+Home Dashboard:
+
+The dashboard content must be dynamic, changing based on the user's role (resident or president).
+
+Resident Dashboard:
+
+Display a welcome message with the user's name (or a placeholder name if not provided).
+
+Show prominent buttons for "Find a Service" and "Offer a Skill," similar to the provided prototype images.
+
+Display a list of available services from other residents, fetched from Firestore's services collection.
+
+Include a placeholder "My Profile" section to show a user's picture, earned points, and a placeholder for "Badges."
+
+Simulate the "AI Suggestions" feature with a static section showing smart recommendations for services.
+
+Community President Dashboard:
+
+Provide a view for managing the community.
+
+Display a list of all registered residents and their details.
+
+Include a button or link to approve new residents (simulated).
+
+Show a summary of services offered and requested in the community.
+
+Data Schema (Firestore):
+
+Collection users:
+
+phone: String
+
+flat: String
+
+floor: String
+
+block: String
+
+role: "resident" or "president"
+
+userId: String (Firebase uid)
+
+Collection services:
+
+title: String (e.g., "Babysitting", "Dog Walking")
+
+description: String
+
+offeredByUserId: String (references the user uid)
+
+price: Number (simulated)
+
+timestamp: Firestore Timestamp
+
+Instructions for the AI:
+
+Write the entire application code in a single React component named App.
+
+Use React hooks (useState, useEffect, useRef) for state management.
+
+Ensure the UI is responsive and adapts to different screen sizes.
+
+Use onSnapshot listeners for Firestore queries to enable real-time updates.
+
+Include robust error handling and loading states.
+
+Do not use alert() or window.confirm(). Implement custom UI for messages instead.
+
+The userId must be displayed prominently on the main UI for other users to find each other in a multi-user environment.
