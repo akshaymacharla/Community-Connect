@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useToast } from "@/hooks/use-toast";
+import PhoneAuth from '@/components/PhoneAuth';
 
 // Firebase imports - using CDN approach as specified
 declare global {
@@ -37,13 +38,14 @@ const loadFirebase = () => {
 };
 
 interface User {
-  uid: string;
+  id: string;
   name: string;
   phone: string;
   flat: string;
   floor: string;
   block: string;
   role: 'resident' | 'president';
+  isVerified: boolean;
 }
 
 interface Service {
@@ -58,23 +60,13 @@ interface Service {
   category: string;
 }
 
-interface ToastData {
-  message: string;
-  type: 'success' | 'error' | 'info';
-}
 
 function App() {
   const [currentView, setCurrentView] = useState<'landing' | 'auth' | 'dashboard'>('landing');
   const [userRole, setUserRole] = useState<'resident' | 'president' | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [services, setServices] = useState<Service[]>([]);
-  const [residents, setResidents] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-  const [toastData, setToastData] = useState<ToastData | null>(null);
-  const [formData, setFormData] = useState<Partial<User>>({});
-  const [firebase, setFirebase] = useState<any>(null);
-  const [db, setDb] = useState<any>(null);
-  const [auth, setAuth] = useState<any>(null);
   const [showServiceForm, setShowServiceForm] = useState(false);
   const [serviceFormData, setServiceFormData] = useState({
     title: '',
@@ -87,110 +79,28 @@ function App() {
 
   const { toast } = useToast();
 
-  // Initialize Firebase
+  // Load services on app start
   useEffect(() => {
-    const initFirebase = async () => {
-      try {
-        const firebaseLib = await loadFirebase();
-        
-        // Clean up environment variables (remove any extra quotes)
-        const cleanEnvVar = (value: string | undefined) => {
-          if (!value) return undefined;
-          return value.replace(/^["']|["']$/g, ''); // Remove leading/trailing quotes
-        };
-
-        const firebaseConfig = window.__firebase_config || {
-          apiKey: cleanEnvVar(import.meta.env.VITE_FIREBASE_API_KEY) || "default_api_key",
-          authDomain: `${cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID) || "default_project"}.firebaseapp.com`,
-          projectId: cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID) || "default_project",
-          storageBucket: `${cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID) || "default_project"}.firebasestorage.app`,
-          messagingSenderId: "123456789",
-          appId: window.__app_id || cleanEnvVar(import.meta.env.VITE_FIREBASE_APP_ID) || "default_app_id"
-        };
-
-        console.log('Firebase config:', {
-          ...firebaseConfig,
-          apiKey: firebaseConfig.apiKey?.substring(0, 10) + '...' // Only show first 10 chars for security
-        });
-
-        // Initialize Firebase app only if it doesn't exist
-        let app;
-        try {
-          app = (firebaseLib as any).getApp(); // Try to get existing app
-        } catch (error) {
-          app = (firebaseLib as any).initializeApp(firebaseConfig); // Create new app if none exists
-        }
-        
-        const authInstance = (firebaseLib as any).auth();
-        const dbInstance = (firebaseLib as any).firestore();
-
-        setFirebase(firebaseLib);
-        setAuth(authInstance);
-        setDb(dbInstance);
-
-        // Listen for authentication state changes
-        authInstance.onAuthStateChanged(async (firebaseUser: any) => {
-          if (firebaseUser) {
-            // User is signed in, get user data from Firestore
-            try {
-              const userDoc = await dbInstance.collection('users').doc(firebaseUser.uid).get();
-              if (userDoc.exists) {
-                const userData = userDoc.data();
-                setUser({ uid: firebaseUser.uid, ...userData } as User);
-                setUserRole(userData.role);
-                setCurrentView('dashboard');
-              }
-            } catch (error) {
-              console.error('Error fetching user data:', error);
-            }
-          }
-        });
-
-        // Set up real-time listeners
-        setupRealtimeListeners(dbInstance);
-
-      } catch (error) {
-        console.error('Error initializing Firebase:', error);
-        showToast('Failed to initialize Firebase. Some features may not work.', 'error');
-      }
-    };
-
-    initFirebase();
+    loadServices();
   }, []);
 
-  const setupRealtimeListeners = (database: any) => {
-    // Listen for services changes
-    database.collection('services').onSnapshot((snapshot: any) => {
-      const servicesData: Service[] = [];
-      snapshot.forEach((doc: any) => {
-        servicesData.push({ id: doc.id, ...doc.data() });
-      });
-      setServices(servicesData);
-    }, (error: any) => {
-      console.error('Error listening to services:', error);
-    });
-
-    // Listen for users changes
-    database.collection('users').onSnapshot((snapshot: any) => {
-      const usersData: User[] = [];
-      snapshot.forEach((doc: any) => {
-        const userData = doc.data();
-        usersData.push({ uid: doc.id, ...userData });
-      });
-      setResidents(usersData.filter(u => u.role === 'resident'));
-    }, (error: any) => {
-      console.error('Error listening to users:', error);
-    });
+  const loadServices = async () => {
+    try {
+      const response = await fetch('/api/services');
+      if (response.ok) {
+        const servicesData = await response.json();
+        setServices(servicesData);
+      }
+    } catch (error) {
+      console.error('Error loading services:', error);
+    }
   };
 
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
-    setToastData({ message, type });
-    toast({
-      title: type === 'error' ? 'Error' : type === 'success' ? 'Success' : 'Info',
-      description: message,
-      variant: type === 'error' ? 'destructive' : 'default',
-    });
-    setTimeout(() => setToastData(null), 3000);
+  const handleAuthSuccess = (userData: User) => {
+    setUser(userData);
+    setUserRole(userData.role);
+    setCurrentView('dashboard');
+    loadServices(); // Refresh services after login
   };
 
   const handleRoleSelection = (role: 'resident' | 'president') => {
@@ -198,103 +108,14 @@ function App() {
     setCurrentView('auth');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    
-    try {
-      // Try Firebase authentication first
-      if (auth && db) {
-        let authResult;
-        
-        // Try custom token first if available
-        if (window.__initial_auth_token) {
-          authResult = await auth.signInWithCustomToken(window.__initial_auth_token);
-        } else {
-          // Fall back to anonymous authentication
-          authResult = await auth.signInAnonymously();
-        }
-
-        // Save user data to Firestore
-        const userData = {
-          ...formData,
-          role: userRole,
-          userId: authResult.user.uid
-        };
-
-        await db.collection('users').doc(authResult.user.uid).set(userData);
-
-        setUser({ uid: authResult.user.uid, ...userData } as User);
-        setCurrentView('dashboard');
-        showToast(`Welcome to NeighbörNet, ${formData.name || 'User'}!`);
-      } else {
-        throw new Error('Firebase not available');
-      }
-      
-    } catch (error: any) {
-      console.error('Authentication error:', error);
-      
-      // Demo mode fallback when Firebase is unavailable
-      if (error.message.includes('configuration-not-found') || error.message.includes('Firebase not available') || error.message.includes('unavailable')) {
-        const demoUser = {
-          uid: `demo_${Date.now()}`,
-          ...formData,
-          role: userRole,
-          name: formData.name || 'Demo User'
-        } as User;
-
-        // Add some demo services for the demo user to see
-        const demoServices: Service[] = [
-          {
-            id: 'demo1',
-            title: 'Pet Walking',
-            description: 'I can walk your dog in the evening after work. Very reliable!',
-            offeredByUserId: 'demo_user_2',
-            price: 15,
-            timestamp: new Date(),
-            userName: 'Sarah Johnson',
-            userFlat: 'B-302',
-            category: 'pet-care'
-          },
-          {
-            id: 'demo2',
-            title: 'Babysitting',
-            description: 'Experienced babysitter available on weekends. References available.',
-            offeredByUserId: 'demo_user_3',
-            price: 12,
-            timestamp: new Date(),
-            userName: 'Mike Chen',
-            userFlat: 'A-105',
-            category: 'childcare'
-          },
-          {
-            id: 'demo3',
-            title: 'Home Cleaning',
-            description: 'Professional cleaning service for apartments. Eco-friendly products used.',
-            offeredByUserId: 'demo_user_4',
-            price: 25,
-            timestamp: new Date(),
-            userName: 'Maria Rodriguez',
-            userFlat: 'C-201',
-            category: 'household'
-          }
-        ];
-
-        setUser(demoUser);
-        setServices(demoServices);
-        setCurrentView('dashboard');
-        showToast(`Welcome to NeighbörNet Demo, ${demoUser.name}! (Demo Mode - Firebase unavailable)`, 'info');
-      } else {
-        showToast(`Authentication failed: ${error.message}`, 'error');
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleOfferService = () => {
     if (!user) {
-      showToast('Please log in to offer services', 'error');
+      toast({
+        title: "Error",
+        description: "Please log in to offer services",
+        variant: "destructive"
+      });
       return;
     }
     setShowServiceForm(true);
@@ -305,7 +126,11 @@ function App() {
     if (!user) return;
 
     if (!serviceFormData.title || !serviceFormData.description || !serviceFormData.price || !serviceFormData.category) {
-      showToast('Please fill in all fields', 'error');
+      toast({
+        title: "Error",
+        description: "Please fill in all fields",
+        variant: "destructive"
+      });
       return;
     }
 
@@ -314,33 +139,36 @@ function App() {
       const serviceData = {
         title: serviceFormData.title,
         description: serviceFormData.description,
-        price: parseFloat(serviceFormData.price),
+        price: serviceFormData.price,
         category: serviceFormData.category,
-        offeredByUserId: user.uid,
-        userName: user.name,
-        userFlat: user.flat,
-        timestamp: firebase ? firebase.firestore.FieldValue.serverTimestamp() : new Date()
+        offeredByUserId: user.id
       };
 
-      if (db) {
-        // Firebase mode
-        await db.collection('services').add(serviceData);
-      } else {
-        // Demo mode
-        const newService = {
-          id: `service_${Date.now()}`,
-          ...serviceData,
-          timestamp: new Date()
-        };
-        setServices(prev => [...prev, newService]);
-      }
+      const response = await fetch('/api/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(serviceData)
+      });
 
-      showToast('Service offered successfully!', 'success');
-      setShowServiceForm(false);
-      setServiceFormData({ title: '', description: '', price: '', category: '' });
+      if (response.ok) {
+        const newService = await response.json();
+        setServices(prev => [...prev, newService]);
+        toast({
+          title: "Success",
+          description: "Service offered successfully!"
+        });
+        setShowServiceForm(false);
+        setServiceFormData({ title: '', description: '', price: '', category: '' });
+      } else {
+        throw new Error('Failed to create service');
+      }
     } catch (error) {
       console.error('Error offering service:', error);
-      showToast('Failed to offer service', 'error');
+      toast({
+        title: "Error",
+        description: "Failed to offer service",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -371,7 +199,10 @@ function App() {
     if (servicesSection) {
       servicesSection.scrollIntoView({ behavior: 'smooth' });
     }
-    showToast('Use the search and filters below to find services', 'info');
+    toast({
+      title: "Info",
+      description: "Use the search and filters below to find services"
+    });
   };
 
   const LandingPage = () => (
@@ -433,130 +264,6 @@ function App() {
     </div>
   );
 
-  const AuthPage = () => (
-    <div className="min-h-screen bg-muted flex items-center justify-center p-4">
-      <div className="max-w-md w-full">
-        <div className="bg-card rounded-lg shadow-lg p-8">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-foreground mb-2" data-testid="auth-title">
-              Join NeighbörNet
-            </h2>
-            <p className="text-muted-foreground" data-testid="auth-subtitle">
-              {userRole === 'resident' ? 'Connect with your neighbors' : 'Manage your community'}
-            </p>
-            <div className="mt-4 inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary text-sm" data-testid="role-badge">
-              <i className={`fas ${userRole === 'resident' ? 'fa-home' : 'fa-users-cog'} mr-2`}></i>
-              {userRole === 'resident' ? 'Resident' : 'Community President'}
-            </div>
-          </div>
-          
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Full Name
-              </label>
-              <input
-                type="text"
-                required
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
-                placeholder="Enter your full name"
-                value={formData.name || ''}
-                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                data-testid="input-name"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-foreground mb-2">
-                Phone Number
-              </label>
-              <input
-                type="tel"
-                required
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
-                placeholder="+1 (555) 123-4567"
-                value={formData.phone || ''}
-                onChange={(e) => setFormData({...formData, phone: e.target.value})}
-                data-testid="input-phone"
-              />
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Flat #
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
-                  placeholder="A-204"
-                  value={formData.flat || ''}
-                  onChange={(e) => setFormData({...formData, flat: e.target.value})}
-                  data-testid="input-flat"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Floor
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
-                  placeholder="2"
-                  value={formData.floor || ''}
-                  onChange={(e) => setFormData({...formData, floor: e.target.value})}
-                  data-testid="input-floor"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
-                  Block
-                </label>
-                <input
-                  type="text"
-                  required
-                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-ring bg-background"
-                  placeholder="A"
-                  value={formData.block || ''}
-                  onChange={(e) => setFormData({...formData, block: e.target.value})}
-                  data-testid="input-block"
-                />
-              </div>
-            </div>
-            
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-primary text-primary-foreground py-3 rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              data-testid="button-join"
-            >
-              {loading ? (
-                <>
-                  <i className="fas fa-spinner fa-spin mr-2"></i>
-                  Joining Community...
-                </>
-              ) : (
-                <>
-                  <i className="fas fa-sign-in-alt mr-2"></i>
-                  Join NeighbörNet
-                </>
-              )}
-            </button>
-          </form>
-          
-          <button
-            onClick={() => setCurrentView('landing')}
-            className="w-full mt-4 text-muted-foreground hover:text-foreground transition-colors text-sm"
-            data-testid="button-back"
-          >
-            ← Back to role selection
-          </button>
-        </div>
-      </div>
-    </div>
-  );
 
   const ResidentDashboard = () => (
     <div className="min-h-screen bg-background">
@@ -567,7 +274,7 @@ function App() {
             <div className="flex items-center space-x-4">
               <h1 className="text-xl font-bold text-primary" data-testid="header-title">NeighbörNet</h1>
               <div className="hidden sm:block text-sm text-muted-foreground" data-testid="user-id">
-                User ID: {user?.uid}
+                User ID: {user?.id}
               </div>
             </div>
             <div className="flex items-center space-x-4">
@@ -1095,30 +802,20 @@ function App() {
     </div>
   );
 
-  const CustomToast = ({ message, type }: ToastData) => (
-    <div className={`toast bg-card border border-border rounded-lg shadow-lg p-4 ${
-      type === 'success' ? 'border-l-4 border-l-accent' : 
-      type === 'error' ? 'border-l-4 border-l-destructive' : ''
-    }`} data-testid="custom-toast">
-      <div className="flex items-center">
-        <i className={`fas ${
-          type === 'success' ? 'fa-check-circle text-accent' : 
-          type === 'error' ? 'fa-exclamation-circle text-destructive' : 
-          'fa-info-circle text-primary'
-        } mr-3`}></i>
-        <span className="text-foreground" data-testid="toast-message">{message}</span>
-      </div>
-    </div>
-  );
 
   return (
     <div className="font-sans">
       {currentView === 'landing' && <LandingPage />}
-      {currentView === 'auth' && <AuthPage />}
+      {currentView === 'auth' && userRole && (
+        <PhoneAuth 
+          onAuthSuccess={handleAuthSuccess}
+          onBack={() => setCurrentView('landing')}
+          userRole={userRole}
+        />
+      )}
       {currentView === 'dashboard' && userRole === 'resident' && <ResidentDashboard />}
       {currentView === 'dashboard' && userRole === 'president' && <PresidentDashboard />}
       
-      {toastData && <CustomToast message={toastData.message} type={toastData.type} />}
     </div>
   );
 }

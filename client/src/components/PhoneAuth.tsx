@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { ArrowLeft, Phone, Shield, Users, Home } from "lucide-react";
 
 interface PhoneAuthProps {
@@ -60,14 +60,20 @@ export default function PhoneAuth({ onAuthSuccess, onBack, userRole }: PhoneAuth
         return;
       }
 
-      const response = await apiRequest('/api/auth/send-otp', {
+      const response = await fetch('/api/auth/send-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: cleanPhone })
       });
 
-      if (response.success) {
-        setDevelopmentOtp(response.developmentOtp || '');
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send OTP');
+      }
+
+      if (data.success) {
+        setDevelopmentOtp(data.developmentOtp || '');
         setStep('otp');
         toast({
           title: "OTP Sent",
@@ -93,7 +99,7 @@ export default function PhoneAuth({ onAuthSuccess, onBack, userRole }: PhoneAuth
       const cleanPhone = phone.replace(/\D/g, '');
       
       // Check if user exists by attempting verification first
-      const response = await apiRequest('/api/auth/verify-otp', {
+      const response = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -102,12 +108,18 @@ export default function PhoneAuth({ onAuthSuccess, onBack, userRole }: PhoneAuth
         })
       });
 
-      if (response.success && response.user) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to verify OTP');
+      }
+
+      if (data.success && data.user) {
         // Existing user - direct login
-        onAuthSuccess(response.user);
+        onAuthSuccess(data.user);
         toast({
           title: "Welcome Back!",
-          description: `Logged in as ${response.user.name}`
+          description: `Logged in as ${data.user.name}`
         });
       }
     } catch (error: any) {
@@ -133,7 +145,7 @@ export default function PhoneAuth({ onAuthSuccess, onBack, userRole }: PhoneAuth
     try {
       const cleanPhone = phone.replace(/\D/g, '');
       
-      const response = await apiRequest('/api/auth/verify-otp', {
+      const response = await fetch('/api/auth/verify-otp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -144,8 +156,14 @@ export default function PhoneAuth({ onAuthSuccess, onBack, userRole }: PhoneAuth
         })
       });
 
-      if (response.success) {
-        onAuthSuccess(response.user);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to complete registration');
+      }
+
+      if (data.success) {
+        onAuthSuccess(data.user);
         toast({
           title: "Registration Complete!",
           description: `Welcome to NeighbörNet, ${userData.name}!`
